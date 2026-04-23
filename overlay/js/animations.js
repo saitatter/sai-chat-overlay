@@ -12,11 +12,15 @@ export function shiftFollowingSiblingsLeft(chat, target, distance) {
   if (index === -1) return () => {};
 
   const toMove = all.slice(index + 1);
-  toMove.forEach((msg) => {
+  const transforms = toMove.map((msg) => ({
+    msg,
+    transform: getComputedStyle(msg).transform,
+  }));
+
+  transforms.forEach(({ msg, transform }) => {
     msg.classList.add("shifting");
     msg.style.transition = "none";
-    const currentTransform = getComputedStyle(msg).transform;
-    msg.style.transform = currentTransform === "none" ? "translate3d(0,0,0)" : currentTransform;
+    msg.style.transform = transform === "none" ? "translate3d(0,0,0)" : transform;
     msg.style.opacity = "1";
   });
 

@@ -94,9 +94,7 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
 
     while (pendingMessages.length > 0 && processed < burstPerFrame) {
       const entry = pendingMessages.shift();
-      if (!isDuplicate(entry)) {
-        renderMessage(entry.user, entry.message, entry.platform, entry.badges);
-      }
+      renderMessage(entry.user, entry.message, entry.platform, entry.badges);
       processed += 1;
     }
 
@@ -110,7 +108,9 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
   }
 
   function addMessage(user, message, platform, badges) {
-    pendingMessages.push({ user, message, platform, badges });
+    const entry = { user, message, platform, badges };
+    if (isDuplicate(entry)) return;
+    pendingMessages.push(entry);
     scheduleFlush();
   }
 

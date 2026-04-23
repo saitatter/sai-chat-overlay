@@ -86,6 +86,11 @@ export function setupSettings(dom) {
     });
     const finalUrl = `${baseUrl}?${urlParams.toString()}`;
 
+    if (!navigator.clipboard) {
+      alert("Clipboard API unavailable. Use HTTPS or localhost.");
+      return;
+    }
+
     navigator.clipboard
       .writeText(finalUrl)
       .then(() => alert(`URL copied to clipboard:\n${finalUrl}`))

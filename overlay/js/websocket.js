@@ -114,7 +114,26 @@ export function connectChatSocket(onChatMessage, options = {}) {
     setStatus("connecting", "Opening WebSocket...");
     clearReconnectTimer();
     clearConnectTimer();
-    ws = new WebSocket(wsUrl);
+    if (ws) {
+      ws.onopen = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      try {
+        ws.close();
+      } catch {
+        // Ignore close errors while replacing a stale socket instance.
+      }
+    }
+
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (error) {
+      setStatus("disconnected", "WebSocket creation failed");
+      logger.error("WebSocket creation failed:", error);
+      scheduleReconnect();
+      return;
+    }
 
     connectTimer = setTimeout(() => {
       if (!ws || ws.readyState !== WebSocket.CONNECTING) return;
