@@ -24,6 +24,7 @@
 - 🧼 Smooth, synchronized slide animations (overflow & auto-expire)
 - 🔖 Badges rendering for users
 - 🔌 Streamer.bot integration (Twitch `ChatMessage`, YouTube `Message`)
+- 🔁 Auto-reconnect with exponential backoff if WebSocket disconnects
 - 🐳 Docker image on GHCR (`latest` for amd64, version tags are multi-arch)
 
 ---
@@ -47,25 +48,29 @@ http://localhost:8080/?edit=false&twitchColor=%239146FF&youtubeColor=%23FF0000&m
 
 ## ⚙️ Configuration (URL params)
 
-| Param          | Type    | Default   | Example                     | Notes |
-|----------------|---------|-----------|-----------------------------|-------|
-| `edit`         | bool    | `false`   | `true`                      | Shows settings panel |
-| `twitchColor`  | hex     | `#9146FF` | `%239146FF`                 | URL-encode `#` as `%23` |
-| `youtubeColor` | hex     | `#FF0000` | `%23FF0000`                 | — |
-| `msgBgColor`   | hex     | `#000000` | `%23000000`                 | Combined with `msgBgOpacity` |
-| `msgBgOpacity` | 0–1     | `0.6`     | `0.8`                       | Final bg: `rgba(color, opacity)` |
-| `fadeTime`     | seconds | `8`       | `12`                        | Message lifetime |
-| `fontFamily`   | string  | `Poppins` | `Roboto`                    | Must exist in the internal Google Fonts list |
+| Param          | Type    | Default             | Example                     | Notes |
+|----------------|---------|---------------------|-----------------------------|-------|
+| `edit`         | bool    | `false`             | `true`                      | Shows settings panel |
+| `twitchColor`  | hex     | `#9146FF`           | `%239146FF`                 | URL-encode `#` as `%23` |
+| `youtubeColor` | hex     | `#FF0000`           | `%23FF0000`                 | — |
+| `msgBgColor`   | hex     | `#000000`           | `%23000000`                 | Combined with `msgBgOpacity` |
+| `msgBgOpacity` | 0–1     | `0.6`               | `0.8`                       | Final bg: `rgba(color, opacity)` |
+| `fadeTime`     | seconds | `8`                 | `12`                        | Message lifetime |
+| `fontFamily`   | string  | `Poppins`           | `Roboto`                    | Must exist in the internal Google Fonts list |
+| `wsUrl`        | ws/wss  | `ws://localhost:8080` | `ws://127.0.0.1:8080`      | Runtime endpoint; not included by Copy URL |
+| `maxMessages`  | number  | `10`                | `15`                        | Max visible chat bubbles (1..50) |
+| `debug`        | bool    | `false`             | `true`                      | Enables verbose debug logging/metrics |
 
 ---
 
 ## 🔌 Streamer.bot Setup
 
-1. Enable **WebSocket** in Streamer.bot (default overlay code uses `ws://localhost:8080`).
+1. Enable **WebSocket** in Streamer.bot (overlay default is `ws://localhost:8080`).
 2. The overlay subscribes to:
    - Twitch: `ChatMessage`
    - YouTube: `Message`
-3. Ensure OBS can reach both the overlay and Streamer.bot WS endpoint.
+3. If needed, override endpoint from URL with `wsUrl` (for example `?wsUrl=ws://127.0.0.1:8080`).
+4. Ensure OBS can reach both the overlay and Streamer.bot WS endpoint.
 
 ---
 
@@ -83,6 +88,18 @@ serve -l 8080 .
 
 Then open:  
 `http://localhost:8080/?edit=true`
+
+---
+
+## 🧱 Architecture
+
+- `overlay/script.js`: app orchestration (wires modules together).
+- `overlay/js/settings.js`: URL/UI settings handling and share-link generation.
+- `overlay/js/websocket.js`: Streamer.bot socket client, reconnect/backoff, status, metrics.
+- `overlay/js/parsers.js`: platform-specific payload extraction with minimal shape checks.
+- `overlay/js/chat.js`: message queue, DOM rendering, overflow compaction.
+- `overlay/js/animations.js`: coordinated remove/shift animations.
+- `overlay/js/config.js`: runtime config parsing (`wsUrl`, `maxMessages`, `debug`).
 
 ---
 
@@ -122,6 +139,8 @@ If no `feat`/`fix`/`perf`/`refactor` (or breaking change) is detected, no releas
 
 - **Blank overlay in OBS** — Check URL and that container is reachable.
 - **No messages appear** — Verify Streamer.bot is running and WS URL matches.
+- **`WS: reconnecting` persists** — Check Streamer.bot WebSocket host/port, firewall rules, and whether OBS/container can reach that endpoint.
+- **Need more WS diagnostics** — Add `&debug=true` to the overlay URL and inspect browser console logs.
 - **Fonts not applying** — Ensure family is in allowlist and Google Fonts is reachable.
 - **Multiple `latest` entries in GHCR** — CI publishes single-platform `latest` and multi-arch only for version tags.
 

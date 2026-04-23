@@ -1,3 +1,8 @@
+  :root {
+      --msg-enter-ms: 300;
+      --msg-shift-ms: 500;
+  }
+
   body {
       background: transparent;
       font-family: 'Poppins', sans-serif;
@@ -29,7 +34,7 @@
       white-space: nowrap;
       flex-shrink: 0;
       transform: translateX(100%);
-      transition: transform 0.5s ease;
+      transition: transform calc(var(--msg-shift-ms, 500) * 1ms) ease;
       position: relative;
       font-family: var(--chat-font-family, 'Poppins', sans-serif);
       will-change: transform, opacity;
@@ -126,5 +131,46 @@
   input[type=number] {
       margin-left: 8px;
       vertical-align: middle;
+  }
+
+  .ws-status {
+      margin: 8px 0 12px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      background: #2d2d2d;
+      border: 1px solid #3a3a3a;
+  }
+
+  .ws-status-connected {
+      color: #7df2a5;
+      border-color: #2f8f58;
+  }
+
+  .ws-status-connecting,
+  .ws-status-reconnecting {
+      color: #ffd36a;
+      border-color: #8e6a1f;
+  }
+
+  .ws-status-disconnected {
+      color: #ff8b8b;
+      border-color: #8a3434;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+      :root {
+          --msg-enter-ms: 0;
+          --msg-shift-ms: 120;
+      }
+
+      .msg,
+      #settingsPanel,
+      #settingsToggle {
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+      }
   }
   
