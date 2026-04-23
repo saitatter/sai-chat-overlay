@@ -13,7 +13,7 @@ function appendMessageContent(div, message, segments) {
       emote.src = segment.url;
       emote.alt = segment.alt || "emote";
       emote.className = "emote";
-      emote.loading = "lazy";
+      emote.loading = "eager";
       div.appendChild(emote);
       return;
     }

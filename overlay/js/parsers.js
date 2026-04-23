@@ -161,13 +161,14 @@ function appendTextWithEmoteRanges(segments, text, emotes) {
 
   let cursor = 0;
   for (const range of ranges) {
+    if (range.start < cursor) continue;
+
     if (range.start > cursor) {
       pushTextSegment(segments, text.slice(cursor, range.start));
     }
-    if (range.endExclusive > cursor) {
-      pushEmoteSegment(segments, range.url, range.alt);
-      cursor = range.endExclusive;
-    }
+
+    pushEmoteSegment(segments, range.url, range.alt);
+    cursor = range.endExclusive;
   }
   if (cursor < text.length) {
     pushTextSegment(segments, text.slice(cursor));
