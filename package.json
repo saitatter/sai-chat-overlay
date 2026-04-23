@@ -1,7 +1,17 @@
 {
+  "scripts": {
+    "lint": "eslint overlay/**/*.js",
+    "format": "prettier --write \"overlay/**/*.{js,css,html}\" \"docs/**/*.md\" \"README.md\"",
+    "format:check": "prettier --check \"overlay/**/*.{js,css,html}\" \"docs/**/*.md\" \"README.md\"",
+    "test": "vitest run",
+    "check": "npm run lint && npm run format:check && npm run test"
+  },
   "devDependencies": {
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^11.0.4",
-    "semantic-release": "^24.2.7"
+    "eslint": "^8.57.1",
+    "prettier": "^3.6.2",
+    "semantic-release": "^24.2.7",
+    "vitest": "^2.1.9"
   }
 }
