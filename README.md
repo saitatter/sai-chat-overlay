@@ -24,6 +24,7 @@
 - 🧼 Smooth, synchronized slide animations (overflow & auto-expire)
 - 🔖 Badges rendering for users
 - 🔌 Streamer.bot integration (Twitch `ChatMessage`, YouTube `Message`)
+- 🔁 Auto-reconnect with exponential backoff if WebSocket disconnects
 - 🐳 Docker image on GHCR (`latest` for amd64, version tags are multi-arch)
 
 ---
@@ -47,25 +48,27 @@ http://localhost:8080/?edit=false&twitchColor=%239146FF&youtubeColor=%23FF0000&m
 
 ## ⚙️ Configuration (URL params)
 
-| Param          | Type    | Default   | Example                     | Notes |
-|----------------|---------|-----------|-----------------------------|-------|
-| `edit`         | bool    | `false`   | `true`                      | Shows settings panel |
-| `twitchColor`  | hex     | `#9146FF` | `%239146FF`                 | URL-encode `#` as `%23` |
-| `youtubeColor` | hex     | `#FF0000` | `%23FF0000`                 | — |
-| `msgBgColor`   | hex     | `#000000` | `%23000000`                 | Combined with `msgBgOpacity` |
-| `msgBgOpacity` | 0–1     | `0.6`     | `0.8`                       | Final bg: `rgba(color, opacity)` |
-| `fadeTime`     | seconds | `8`       | `12`                        | Message lifetime |
-| `fontFamily`   | string  | `Poppins` | `Roboto`                    | Must exist in the internal Google Fonts list |
+| Param          | Type    | Default             | Example                     | Notes |
+|----------------|---------|---------------------|-----------------------------|-------|
+| `edit`         | bool    | `false`             | `true`                      | Shows settings panel |
+| `twitchColor`  | hex     | `#9146FF`           | `%239146FF`                 | URL-encode `#` as `%23` |
+| `youtubeColor` | hex     | `#FF0000`           | `%23FF0000`                 | — |
+| `msgBgColor`   | hex     | `#000000`           | `%23000000`                 | Combined with `msgBgOpacity` |
+| `msgBgOpacity` | 0–1     | `0.6`               | `0.8`                       | Final bg: `rgba(color, opacity)` |
+| `fadeTime`     | seconds | `8`                 | `12`                        | Message lifetime |
+| `fontFamily`   | string  | `Poppins`           | `Roboto`                    | Must exist in the internal Google Fonts list |
+| `wsUrl`        | ws/wss  | `ws://localhost:8080` | `ws://127.0.0.1:8080`      | Streamer.bot WebSocket endpoint |
 
 ---
 
 ## 🔌 Streamer.bot Setup
 
-1. Enable **WebSocket** in Streamer.bot (default overlay code uses `ws://localhost:8080`).
+1. Enable **WebSocket** in Streamer.bot (overlay default is `ws://localhost:8080`).
 2. The overlay subscribes to:
    - Twitch: `ChatMessage`
    - YouTube: `Message`
-3. Ensure OBS can reach both the overlay and Streamer.bot WS endpoint.
+3. If needed, override endpoint from URL with `wsUrl` (for example `?wsUrl=ws://127.0.0.1:8080`).
+4. Ensure OBS can reach both the overlay and Streamer.bot WS endpoint.
 
 ---
 
