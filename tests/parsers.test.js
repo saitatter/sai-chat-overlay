@@ -121,6 +121,90 @@ describe("parseChatEvent", () => {
       ],
     });
   });
+
+  it("skips overlapping emote ranges safely", () => {
+    const packet = {
+      event: { source: "Twitch" },
+      data: {
+        user: { name: "OverlapUser" },
+        message: {
+          message: {
+            text: "Hello Kappa Keepo",
+            emotes: [
+              {
+                name: "Kappa",
+                startIndex: 6,
+                endIndex: 10,
+                imageUrl: "https://cdn.example.com/emotes/kappa.png",
+              },
+              {
+                name: "BadOverlap",
+                startIndex: 8,
+                endIndex: 12,
+                imageUrl: "https://cdn.example.com/emotes/overlap.png",
+              },
+              {
+                name: "Keepo",
+                startIndex: 12,
+                endIndex: 16,
+                imageUrl: "https://cdn.example.com/emotes/keepo.png",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(parseChatEvent(packet)).toEqual({
+      user: "OverlapUser",
+      message: "Hello Kappa Keepo",
+      platform: "twitch",
+      badges: [],
+      segments: [
+        { type: "text", text: "Hello " },
+        {
+          type: "emote",
+          url: "https://cdn.example.com/emotes/kappa.png",
+          alt: "Kappa",
+        },
+        { type: "text", text: " " },
+        {
+          type: "emote",
+          url: "https://cdn.example.com/emotes/keepo.png",
+          alt: "Keepo",
+        },
+      ],
+    });
+  });
+
+  it("ignores invalid emote ranges without image URLs", () => {
+    const packet = {
+      event: { source: "Twitch" },
+      data: {
+        user: { name: "NoUrlUser" },
+        message: {
+          message: {
+            text: "Hi Nope",
+            emotes: [
+              {
+                name: "Nope",
+                startIndex: 3,
+                endIndex: 6,
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(parseChatEvent(packet)).toEqual({
+      user: "NoUrlUser",
+      message: "Hi Nope",
+      platform: "twitch",
+      badges: [],
+      segments: [{ type: "text", text: "Hi Nope" }],
+    });
+  });
 });
 
 describe("parseModerationChatEvent", () => {

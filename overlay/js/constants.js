@@ -38,4 +38,5 @@ export const WEBSOCKET_DEFAULTS = {
 export const CHAT_DEFAULTS = {
   maxMessages: MAX_MESSAGES,
   burstPerFrame: 3,
+  maxCachedEmotes: 256,
 };

@@ -1,6 +1,7 @@
 import { CHAT_DEFAULTS, GAP_PX } from "./constants.js";
 import { animateRemoveMessage } from "./animations.js";
 import { getCssNumberVar } from "./utils.js";
+import { createEmoteCache } from "./emote-cache.js";
 
 function appendMessageContent(div, message, segments) {
   const textSegments = Array.isArray(segments)
@@ -53,6 +54,7 @@ function getEnterDurationMs() {
 export function createChatController(chat, getFadeTimeMs, options = {}) {
   const maxMessages = options.maxMessages || CHAT_DEFAULTS.maxMessages;
   const burstPerFrame = options.burstPerFrame || CHAT_DEFAULTS.burstPerFrame;
+  const emoteCache = createEmoteCache(options.maxCachedEmotes || CHAT_DEFAULTS.maxCachedEmotes || 256);
 
   let isCompacting = false;
   let flushScheduled = false;
@@ -115,6 +117,14 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
   }
 
   function addMessage(user, message, platform, badges, segments) {
+    if (Array.isArray(segments)) {
+      segments.forEach((segment) => {
+        if (segment?.type === "emote" && typeof segment.url === "string") {
+          emoteCache.prefetch(segment.url);
+        }
+      });
+    }
+
     pendingMessages.push({ user, message, platform, badges, segments });
     scheduleFlush();
   }
