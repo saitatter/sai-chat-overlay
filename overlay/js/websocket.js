@@ -1,9 +1,5 @@
 import { DEFAULTS, WEBSOCKET_DEFAULTS } from "./constants.js";
-
-function getBadges(packet) {
-  if (!Array.isArray(packet?.data?.user?.badges)) return [];
-  return packet.data.user.badges.map((badge) => badge.imageUrl).filter(Boolean);
-}
+import { parseChatEvent } from "./parsers.js";
 
 function subscribeToChatEvents(ws) {
   ws.send(
@@ -18,26 +14,19 @@ function subscribeToChatEvents(ws) {
   );
 }
 
-function parseAndDispatchMessage(packet, onChatMessage) {
-  const source = packet?.event?.source;
-  const userName = packet?.data?.user?.name;
-  if (!source || typeof userName !== "string" || userName.length === 0) return;
-
-  const badges = getBadges(packet);
-  if (source === "Twitch") {
-    const text = packet?.data?.message?.message;
-    if (typeof text === "string" && text.length > 0) {
-      onChatMessage(userName, text, "twitch", badges);
-    }
-    return;
-  }
-
-  if (source === "YouTube") {
-    const text = packet?.data?.message;
-    if (typeof text === "string" && text.length > 0) {
-      onChatMessage(userName, text, "youtube", badges);
-    }
-  }
+export function computeBackoffDelay({
+  reconnectInitialDelayMs,
+  reconnectBackoff,
+  reconnectMaxDelayMs,
+  reconnectJitterRatio,
+  reconnectAttempt,
+  randomFn = Math.random,
+}) {
+  const baseDelay = Math.round(
+    reconnectInitialDelayMs * reconnectBackoff ** Math.max(0, reconnectAttempt - 1),
+  );
+  const jitter = Math.round(baseDelay * reconnectJitterRatio * randomFn());
+  return Math.min(reconnectMaxDelayMs, baseDelay + jitter);
 }
 
 export function connectChatSocket(onChatMessage, options = {}) {
@@ -47,11 +36,39 @@ export function connectChatSocket(onChatMessage, options = {}) {
   const reconnectMaxDelayMs =
     options.reconnectMaxDelayMs || WEBSOCKET_DEFAULTS.reconnectMaxDelayMs;
   const reconnectBackoff = options.reconnectBackoff || WEBSOCKET_DEFAULTS.reconnectBackoff;
+  const reconnectJitterRatio =
+    options.reconnectJitterRatio || WEBSOCKET_DEFAULTS.reconnectJitterRatio;
+  const connectTimeoutMs = options.connectTimeoutMs || WEBSOCKET_DEFAULTS.connectTimeoutMs;
+  const onStatusChange =
+    typeof options.onStatusChange === "function" ? options.onStatusChange : () => {};
+  const onMetricsChange =
+    typeof options.onMetricsChange === "function" ? options.onMetricsChange : () => {};
+  const logger = options.logger || console;
 
   let ws = null;
   let reconnectTimer = null;
+  let connectTimer = null;
   let reconnectAttempt = 0;
   let intentionallyClosed = false;
+  const metrics = {
+    messagesReceived: 0,
+    messagesDropped: 0,
+    parseErrors: 0,
+    reconnectsScheduled: 0,
+  };
+
+  function emitMetrics() {
+    onMetricsChange({ ...metrics });
+  }
+
+  function setStatus(status, detail = "") {
+    onStatusChange({
+      status,
+      detail,
+      reconnectAttempt,
+      wsUrl,
+    });
+  }
 
   function clearReconnectTimer() {
     if (reconnectTimer) {
@@ -60,34 +77,62 @@ export function connectChatSocket(onChatMessage, options = {}) {
     }
   }
 
+  function clearConnectTimer() {
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+  }
+
+  function computeReconnectDelay() {
+    return computeBackoffDelay({
+      reconnectInitialDelayMs,
+      reconnectBackoff,
+      reconnectMaxDelayMs,
+      reconnectJitterRatio,
+      reconnectAttempt,
+    });
+  }
+
   function scheduleReconnect() {
     if (intentionallyClosed) return;
     clearReconnectTimer();
 
     reconnectAttempt += 1;
-    const delay = Math.min(
-      reconnectMaxDelayMs,
-      Math.round(reconnectInitialDelayMs * reconnectBackoff ** (reconnectAttempt - 1)),
-    );
+    metrics.reconnectsScheduled += 1;
+    emitMetrics();
+    const delay = computeReconnectDelay();
 
-    console.warn(
+    setStatus("reconnecting", `Retrying in ${delay}ms`);
+    logger.warn(
       `Streamer.bot disconnected. Reconnecting in ${delay}ms (attempt ${reconnectAttempt})...`,
     );
     reconnectTimer = setTimeout(connect, delay);
   }
 
   function connect() {
+    setStatus("connecting", "Opening WebSocket...");
     clearReconnectTimer();
+    clearConnectTimer();
     ws = new WebSocket(wsUrl);
 
+    connectTimer = setTimeout(() => {
+      if (!ws || ws.readyState !== WebSocket.CONNECTING) return;
+      logger.warn(`WebSocket connect timeout after ${connectTimeoutMs}ms.`);
+      ws.close();
+    }, connectTimeoutMs);
+
     ws.onopen = () => {
+      clearConnectTimer();
       reconnectAttempt = 0;
-      console.log(`Connected to Streamer.bot WebSocket at ${wsUrl}`);
+      setStatus("connected", "Subscribed to chat events");
+      logger.info(`Connected to Streamer.bot WebSocket at ${wsUrl}`);
       subscribeToChatEvents(ws);
     };
 
     ws.onerror = (error) => {
-      console.error("Streamer.bot WebSocket error:", error);
+      setStatus("disconnected", "WebSocket error");
+      logger.error("Streamer.bot WebSocket error:", error);
     };
 
     ws.onmessage = (event) => {
@@ -95,15 +140,27 @@ export function connectChatSocket(onChatMessage, options = {}) {
       try {
         packet = JSON.parse(event.data);
       } catch (error) {
-        console.error("Invalid WebSocket payload:", error);
+        metrics.parseErrors += 1;
+        emitMetrics();
+        logger.error("Invalid WebSocket payload:", error);
         return;
       }
 
-      parseAndDispatchMessage(packet, onChatMessage);
+      metrics.messagesReceived += 1;
+      const parsed = parseChatEvent(packet);
+      if (!parsed) {
+        metrics.messagesDropped += 1;
+        emitMetrics();
+        return;
+      }
+      onChatMessage(parsed.user, parsed.message, parsed.platform, parsed.badges);
+      emitMetrics();
     };
 
     ws.onclose = () => {
+      clearConnectTimer();
       if (intentionallyClosed) return;
+      setStatus("disconnected", "Socket closed");
       scheduleReconnect();
     };
   }
@@ -111,6 +168,8 @@ export function connectChatSocket(onChatMessage, options = {}) {
   function close() {
     intentionallyClosed = true;
     clearReconnectTimer();
+    clearConnectTimer();
+    setStatus("disconnected", "Closed by client");
     if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, "Client closed");
     if (ws && ws.readyState === WebSocket.CONNECTING) ws.close();
   }
@@ -120,5 +179,6 @@ export function connectChatSocket(onChatMessage, options = {}) {
   return {
     close,
     getUrl: () => wsUrl,
+    getMetrics: () => ({ ...metrics }),
   };
 }

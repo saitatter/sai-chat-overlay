@@ -9,6 +9,7 @@ export function getDom() {
     msgBgColorInput: document.getElementById("msgBgColor"),
     msgBgOpacityInput: document.getElementById("msgBgOpacity"),
     fontSelect: document.getElementById("fontFamilySelect"),
+    wsStatus: document.getElementById("wsStatus"),
     copyUrlBtn: document.getElementById("copyUrlBtn"),
   };
 }
