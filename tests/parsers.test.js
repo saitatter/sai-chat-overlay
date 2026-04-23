@@ -16,6 +16,7 @@ describe("parseChatEvent", () => {
       message: "Hello chat",
       platform: "twitch",
       badges: ["https://example.com/badge.png"],
+      segments: [{ type: "text", text: "Hello chat" }],
     });
   });
 
@@ -43,17 +44,26 @@ describe("parseChatEvent", () => {
       message: "Salut 😀 chat",
       platform: "youtube",
       badges: [],
+      segments: [{ type: "text", text: "Salut 😀 chat" }],
     });
   });
 
-  it("parses twitch structured fragments with emoji alt text", () => {
+  it("parses twitch structured fragments with custom emote image", () => {
     const packet = {
       event: { source: "Twitch" },
       data: {
         user: { name: "Alice" },
         message: {
           message: {
-            fragments: [{ text: "GG " }, { emoji: { alt: "🔥" } }],
+            fragments: [
+              { text: "GG " },
+              {
+                emote: {
+                  name: "FireHype",
+                  imageUrl: "https://cdn.example.com/emotes/firehype.png",
+                },
+              },
+            ],
           },
         },
       },
@@ -61,9 +71,54 @@ describe("parseChatEvent", () => {
 
     expect(parseChatEvent(packet)).toEqual({
       user: "Alice",
-      message: "GG 🔥",
+      message: "GG FireHype",
       platform: "twitch",
       badges: [],
+      segments: [
+        { type: "text", text: "GG " },
+        {
+          type: "emote",
+          url: "https://cdn.example.com/emotes/firehype.png",
+          alt: "FireHype",
+        },
+      ],
+    });
+  });
+
+  it("parses emotes array with inline ranges", () => {
+    const packet = {
+      event: { source: "Twitch" },
+      data: {
+        user: { name: "Zed" },
+        message: {
+          message: {
+            text: "Hi Kappa",
+            emotes: [
+              {
+                name: "Kappa",
+                startIndex: 3,
+                endIndex: 7,
+                imageUrl: "https://cdn.example.com/emotes/kappa.png",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(parseChatEvent(packet)).toEqual({
+      user: "Zed",
+      message: "Hi Kappa",
+      platform: "twitch",
+      badges: [],
+      segments: [
+        { type: "text", text: "Hi " },
+        {
+          type: "emote",
+          url: "https://cdn.example.com/emotes/kappa.png",
+          alt: "Kappa",
+        },
+      ],
     });
   });
 });

@@ -180,7 +180,7 @@ export function connectChatSocket(onChatMessage, options = {}) {
         emitMetrics();
         return;
       }
-      onChatMessage(parsed.user, parsed.message, parsed.platform, parsed.badges);
+      onChatMessage(parsed.user, parsed.message, parsed.platform, parsed.badges, parsed.segments);
       emitMetrics();
     };
 

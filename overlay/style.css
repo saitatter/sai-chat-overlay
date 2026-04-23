@@ -88,6 +88,14 @@ body {
   vertical-align: middle;
 }
 
+.emote {
+  width: 1.2em;
+  height: 1.2em;
+  object-fit: contain;
+  margin: 0 0.05em;
+  vertical-align: -0.2em;
+}
+
 /* Settings panel */
 #settingsPanel {
   position: fixed;
