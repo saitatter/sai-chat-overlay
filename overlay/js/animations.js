@@ -1,6 +1,12 @@
 import { ANIM_MS } from "./constants.js";
+import { getCssNumberVar } from "./utils.js";
+
+function getShiftDurationMs() {
+  return getCssNumberVar("--msg-shift-ms", ANIM_MS);
+}
 
 export function shiftFollowingSiblingsLeft(chat, target, distance) {
+  const animMs = getShiftDurationMs();
   const all = Array.from(chat.children);
   const index = all.indexOf(target);
   if (index === -1) return () => {};
@@ -18,7 +24,7 @@ export function shiftFollowingSiblingsLeft(chat, target, distance) {
 
   requestAnimationFrame(() => {
     toMove.forEach((msg) => {
-      msg.style.transition = `transform ${ANIM_MS}ms ease`;
+      msg.style.transition = `transform ${animMs}ms ease`;
     });
     requestAnimationFrame(() => {
       toMove.forEach((msg) => {
@@ -44,13 +50,14 @@ export function shiftFollowingSiblingsLeft(chat, target, distance) {
 }
 
 export function animateRemoveMessage(chat, msgElement, extraOffset, callback) {
+  const animMs = getShiftDurationMs();
   if (msgElement.dataset.removing === "1") return;
   msgElement.dataset.removing = "1";
 
   const width = msgElement.offsetWidth + extraOffset;
   const cleanupSiblings = shiftFollowingSiblingsLeft(chat, msgElement, width);
 
-  msgElement.style.transition = `transform ${ANIM_MS}ms ease, opacity ${ANIM_MS}ms ease`;
+  msgElement.style.transition = `transform ${animMs}ms ease, opacity ${animMs}ms ease`;
   void msgElement.offsetWidth;
   msgElement.style.transform = `translate3d(-${width}px, 0, 0)`;
   msgElement.style.opacity = "0";
@@ -76,5 +83,5 @@ export function animateRemoveMessage(chat, msgElement, extraOffset, callback) {
     if (finished) return;
     msgElement.removeEventListener("transitionend", onEnd);
     done();
-  }, ANIM_MS + 50);
+  }, animMs + 50);
 }
