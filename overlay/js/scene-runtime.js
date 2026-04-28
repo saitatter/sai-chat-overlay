@@ -94,9 +94,15 @@ function createShader(gl, type, source) {
 
 function createProgram(gl, fragmentSource = fragmentShaderSource) {
   const program = gl.createProgram();
-  gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
-  gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fragmentSource));
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
   gl.linkProgram(program);
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     throw new Error(gl.getProgramInfoLog(program) || "Shader linking failed");
   }
@@ -242,13 +248,13 @@ function createRenderer(canvas, logger) {
         program = nextProgram;
         locations = getLocations();
         activeFragmentSource = nextFragmentSource;
+        startedAt = performance.now();
       } catch (error) {
         logger.warn("Scene shader compilation failed; keeping previous shader.", error);
       }
     },
     setParameters(nextParameters = {}) {
       parameters = { ...parameters, ...nextParameters };
-      startedAt = performance.now();
     },
     start() {
       requestAnimationFrame(render);
@@ -259,6 +265,7 @@ function createRenderer(canvas, logger) {
 function createSceneController(dom, renderer, instance, assetBase, logger) {
   let currentScene = { ...IDLE_SCENE };
   let countdownTimer = null;
+  let sceneQueue = Promise.resolve();
 
   function updateCountdown() {
     if (!currentScene.countdownEndsAt) {
@@ -315,8 +322,19 @@ function createSceneController(dom, renderer, instance, assetBase, logger) {
     renderer.setParameters(currentScene.parameters);
 
     if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = null;
     updateCountdown();
-    countdownTimer = setInterval(updateCountdown, 500);
+    if (currentScene.countdownEndsAt) {
+      countdownTimer = setInterval(updateCountdown, 500);
+    }
+  }
+
+  function enqueueSceneUpdate(nextScene) {
+    sceneQueue = sceneQueue
+      .then(() => setScene(nextScene))
+      .catch((error) => {
+        logger.warn("Scene update failed.", error);
+      });
   }
 
   function handleEvent(packet) {
@@ -325,12 +343,12 @@ function createSceneController(dom, renderer, instance, assetBase, logger) {
     if (targetInstance !== instance) return;
 
     if (packet.type === "scene.end") {
-      void setScene({ ...IDLE_SCENE });
+      enqueueSceneUpdate({ ...IDLE_SCENE });
       return;
     }
 
     if (packet.type === "scene.begin" || packet.type === "scene.update") {
-      void setScene(packet.payload || {});
+      enqueueSceneUpdate(packet.payload || {});
       logger.debug("scene event applied", packet);
     }
   }
