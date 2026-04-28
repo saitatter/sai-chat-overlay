@@ -159,10 +159,13 @@ async function loadSceneDefinition(sceneKey, assetBase, logger) {
     const basePath = `${assetBase.replace(/\/$/, "")}/${key}`;
     const manifestResponse = await fetch(`${basePath}/scene.json`);
     if (!manifestResponse.ok) throw new Error(`Scene manifest not found: ${key}`);
-    const manifest = await manifestResponse.json();
-    const fragmentShader = manifest.fragmentShader
-      ? await readText(`${basePath}/${manifest.fragmentShader}`)
-      : fragmentShaderSource;
+    const manifest = (await manifestResponse.json()) || {};
+    const fragmentShader =
+      typeof manifest.fragmentShader === "string" && manifest.fragmentShader
+        ? await readText(
+            `${basePath}/${safeRelativePath(manifest.fragmentShader, "fragment.glsl")}`,
+          )
+        : fragmentShaderSource;
 
     return {
       key,
@@ -382,7 +385,8 @@ function createSceneController(dom, renderer, instance, assetBase, logger) {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = null;
     updateCountdown();
-    if (currentScene.countdownEndsAt) {
+    const countdownEndMs = new Date(currentScene.countdownEndsAt).getTime();
+    if (Number.isFinite(countdownEndMs) && countdownEndMs > Date.now()) {
       countdownTimer = setInterval(updateCountdown, 500);
     }
   }
