@@ -59,6 +59,17 @@ http://localhost:8080/?eventSource=moderation&overlayWsUrl=ws%3A%2F%2Flocalhost%
 
 Use `&demo=true` to render sample moderation events without a backend connection.
 
+### Scene overlay mode
+
+Scene overlays use a separate OBS Browser Source page with a procedural WebGL
+background and DOM text/countdown layer:
+
+```
+http://localhost:8080/overlay/scene.html?instance=main&overlayWsUrl=ws%3A%2F%2Flocalhost%3A8787%2Fws%3Fchannel%3Doverlay&sceneApiUrl=http%3A%2F%2Flocalhost%3A8787
+```
+
+Use `&demo=true` to preview the shader scene without the moderation backend.
+
 ---
 
 ## ⚙️ Configuration (URL params)
@@ -76,6 +87,7 @@ Use `&demo=true` to render sample moderation events without a backend connection
 | `eventSource`  | string  | `streamerbot`                            | `moderation`                             | `streamerbot` connects directly; `moderation` consumes approved overlay events |
 | `overlayWsUrl` | ws/wss  | `ws://localhost:8787/ws?channel=overlay` | `ws://127.0.0.1:8787/ws?channel=overlay` | Moderation overlay channel endpoint                                            |
 | `demo`         | bool    | `false`                                  | `true`                                   | Emits sample moderation events locally                                         |
+| `sceneApiUrl`  | http(s) | `http://localhost:8787`                  | `http://127.0.0.1:8787`                  | Scene overlay restore endpoint                                                 |
 | `maxMessages`  | number  | `10`                                     | `15`                                     | Max visible chat bubbles (1..50)                                               |
 | `debug`        | bool    | `false`                                  | `true`                                   | Enables verbose debug logging/metrics                                          |
 

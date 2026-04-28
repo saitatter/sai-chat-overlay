@@ -1,0 +1,342 @@
+import { createLogger } from "./logger.js";
+
+const DEFAULT_OVERLAY_WS_URL = "ws://localhost:8787/ws?channel=overlay";
+const DEFAULT_SCENE_API_URL = "http://localhost:8787";
+const IDLE_SCENE = {
+  sceneKey: "idle",
+  title: "",
+  subtitle: "",
+  kicker: "",
+  countdownEndsAt: "",
+  parameters: {},
+};
+
+const vertexShaderSource = `
+attribute vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const fragmentShaderSource = `
+precision highp float;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_accentColor;
+uniform vec3 u_secondaryColor;
+uniform float u_intensity;
+
+float wave(vec2 uv, float speed, float scale) {
+  return sin((uv.x * scale) + (u_time * speed)) * cos((uv.y * (scale * 0.64)) - (u_time * speed));
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+  vec2 centered = uv - 0.5;
+  centered.x *= u_resolution.x / max(u_resolution.y, 1.0);
+
+  float radius = length(centered);
+  float aurora = wave(centered + vec2(0.0, sin(u_time * 0.08) * 0.12), 0.55, 8.0);
+  aurora += wave(centered.yx + vec2(cos(u_time * 0.07) * 0.08, 0.0), 0.34, 13.0);
+  aurora = smoothstep(-0.2, 1.0, aurora);
+
+  vec3 deep = vec3(0.015, 0.018, 0.035);
+  vec3 glow = mix(u_accentColor, u_secondaryColor, uv.x + sin(u_time * 0.12) * 0.18);
+  float vignette = smoothstep(0.92, 0.18, radius);
+  float beam = smoothstep(0.65, 0.02, abs(centered.y + sin(centered.x * 3.0 + u_time * 0.2) * 0.16));
+  vec3 color = deep + glow * aurora * beam * u_intensity * 0.9;
+  color += glow * pow(vignette, 2.0) * 0.18 * u_intensity;
+
+  gl_FragColor = vec4(color, max(0.0, vignette));
+}
+`;
+
+function readFlag(params, name) {
+  const value = params.get(name);
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function safeUrl(value, fallback, allowedProtocols) {
+  if (!value) return fallback;
+  try {
+    const parsed = new URL(value);
+    return allowedProtocols.includes(parsed.protocol) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeInstance(value) {
+  const normalized = (value || "main").trim().toLowerCase();
+  return /^[a-z0-9_-]{1,40}$/.test(normalized) ? normalized : "main";
+}
+
+function hexToVec3(hex, fallback) {
+  if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return fallback;
+  const value = Number.parseInt(hex.slice(1), 16);
+  return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+}
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader) || "Shader compilation failed");
+  }
+  return shader;
+}
+
+function createProgram(gl) {
+  const program = gl.createProgram();
+  gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
+  gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program) || "Shader linking failed");
+  }
+  return program;
+}
+
+function createRenderer(canvas, logger) {
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    antialias: false,
+    premultipliedAlpha: false,
+  });
+
+  if (!gl) {
+    logger.warn("WebGL unavailable for scene runtime.");
+    return {
+      setParameters() {},
+      start() {},
+    };
+  }
+
+  const program = createProgram(gl);
+  const positionBuffer = gl.createBuffer();
+  const locations = {
+    position: gl.getAttribLocation(program, "a_position"),
+    resolution: gl.getUniformLocation(program, "u_resolution"),
+    time: gl.getUniformLocation(program, "u_time"),
+    accentColor: gl.getUniformLocation(program, "u_accentColor"),
+    secondaryColor: gl.getUniformLocation(program, "u_secondaryColor"),
+    intensity: gl.getUniformLocation(program, "u_intensity"),
+  };
+
+  let startedAt = performance.now();
+  let parameters = {
+    accentColor: "#9146FF",
+    secondaryColor: "#00D1FF",
+    intensity: 0.8,
+  };
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
+
+  function resize() {
+    const pixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    const width = Math.max(1, Math.floor(canvas.clientWidth * pixelRatio));
+    const height = Math.max(1, Math.floor(canvas.clientHeight * pixelRatio));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      gl.viewport(0, 0, width, height);
+    }
+  }
+
+  function render() {
+    resize();
+    const accent = hexToVec3(parameters.accentColor, [0.57, 0.27, 1]);
+    const secondary = hexToVec3(parameters.secondaryColor, [0, 0.82, 1]);
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.enableVertexAttribArray(locations.position);
+    gl.vertexAttribPointer(locations.position, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform2f(locations.resolution, canvas.width, canvas.height);
+    gl.uniform1f(locations.time, (performance.now() - startedAt) / 1000);
+    gl.uniform3fv(locations.accentColor, accent);
+    gl.uniform3fv(locations.secondaryColor, secondary);
+    gl.uniform1f(locations.intensity, Number(parameters.intensity) || 0.8);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    requestAnimationFrame(render);
+  }
+
+  return {
+    setParameters(nextParameters = {}) {
+      parameters = { ...parameters, ...nextParameters };
+      startedAt = performance.now();
+    },
+    start() {
+      requestAnimationFrame(render);
+    },
+  };
+}
+
+function createSceneController(dom, renderer, instance, logger) {
+  let currentScene = { ...IDLE_SCENE };
+  let countdownTimer = null;
+
+  function updateCountdown() {
+    if (!currentScene.countdownEndsAt) {
+      dom.countdown.textContent = "";
+      return;
+    }
+
+    const remainingMs = new Date(currentScene.countdownEndsAt).getTime() - Date.now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      dom.countdown.textContent = "00:00";
+      return;
+    }
+
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    dom.countdown.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function setScene(nextScene) {
+    currentScene = {
+      ...currentScene,
+      ...nextScene,
+      parameters: {
+        ...currentScene.parameters,
+        ...(nextScene.parameters || {}),
+      },
+    };
+
+    dom.content.classList.toggle("scene-idle", currentScene.sceneKey === "idle");
+    dom.kicker.textContent = currentScene.kicker || currentScene.sceneKey || "";
+    dom.title.textContent = currentScene.title || "";
+    dom.subtitle.textContent = currentScene.subtitle || "";
+    dom.status.textContent = `Scene: ${instance}/${currentScene.sceneKey}`;
+    document.documentElement.style.setProperty(
+      "--scene-accent",
+      currentScene.parameters.accentColor || "#9146FF",
+    );
+    renderer.setParameters(currentScene.parameters);
+
+    if (countdownTimer) clearInterval(countdownTimer);
+    updateCountdown();
+    countdownTimer = setInterval(updateCountdown, 500);
+  }
+
+  function handleEvent(packet) {
+    if (!packet || !String(packet.type || "").startsWith("scene.")) return;
+    const targetInstance = packet?.target?.instance || "main";
+    if (targetInstance !== instance) return;
+
+    if (packet.type === "scene.end") {
+      setScene({ ...IDLE_SCENE });
+      return;
+    }
+
+    if (packet.type === "scene.begin" || packet.type === "scene.update") {
+      setScene(packet.payload || {});
+      logger.debug("scene event applied", packet);
+    }
+  }
+
+  return {
+    handleEvent,
+    setScene,
+  };
+}
+
+function connectSceneSocket({ wsUrl, logger, onPacket, statusEl }) {
+  let reconnectAttempt = 0;
+
+  function connect() {
+    const socket = new WebSocket(wsUrl);
+    statusEl.textContent = "Scene: connecting";
+
+    socket.addEventListener("open", () => {
+      reconnectAttempt = 0;
+      statusEl.textContent = "Scene: connected";
+      logger.info(`Connected to scene event socket at ${wsUrl}`);
+    });
+
+    socket.addEventListener("message", (event) => {
+      try {
+        onPacket(JSON.parse(event.data));
+      } catch (error) {
+        logger.warn("Ignoring invalid scene event payload", error);
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      reconnectAttempt += 1;
+      const delay = Math.min(12000, 750 * reconnectAttempt);
+      statusEl.textContent = `Scene: reconnecting (${reconnectAttempt})`;
+      setTimeout(connect, delay);
+    });
+  }
+
+  connect();
+}
+
+async function restoreSceneState({ apiUrl, instance, controller, logger }) {
+  try {
+    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/scenes/${instance}/state`);
+    if (!response.ok) return;
+    const state = await response.json();
+    if (state?.active) controller.setScene(state.active);
+  } catch (error) {
+    logger.debug("Scene state restore skipped", error);
+  }
+}
+
+const params = new URLSearchParams(window.location.search);
+const debug = readFlag(params, "debug");
+const instance = normalizeInstance(params.get("instance"));
+const overlayWsUrl = safeUrl(params.get("overlayWsUrl"), DEFAULT_OVERLAY_WS_URL, ["ws:", "wss:"]);
+const sceneApiUrl = safeUrl(params.get("sceneApiUrl"), DEFAULT_SCENE_API_URL, ["http:", "https:"]);
+const logger = createLogger("scene-runtime", debug);
+
+if (debug) document.body.classList.add("scene-debug");
+
+const dom = {
+  canvas: document.getElementById("sceneCanvas"),
+  content: document.getElementById("sceneContent"),
+  kicker: document.getElementById("sceneKicker"),
+  title: document.getElementById("sceneTitle"),
+  subtitle: document.getElementById("sceneSubtitle"),
+  countdown: document.getElementById("sceneCountdown"),
+  status: document.getElementById("sceneStatus"),
+};
+
+const renderer = createRenderer(dom.canvas, logger);
+const controller = createSceneController(dom, renderer, instance, logger);
+renderer.start();
+restoreSceneState({ apiUrl: sceneApiUrl, instance, controller, logger });
+
+if (readFlag(params, "demo")) {
+  controller.setScene({
+    sceneKey: "starting-soon",
+    kicker: "Live shortly",
+    title: "Starting Soon",
+    subtitle: "Grab a drink and settle in.",
+    countdownEndsAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    parameters: {
+      accentColor: "#9146FF",
+      secondaryColor: "#00D1FF",
+      intensity: 0.9,
+    },
+  });
+} else {
+  connectSceneSocket({
+    wsUrl: overlayWsUrl,
+    logger,
+    onPacket: controller.handleEvent,
+    statusEl: dom.status,
+  });
+}
