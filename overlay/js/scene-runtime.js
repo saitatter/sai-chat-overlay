@@ -436,16 +436,16 @@ export function createSceneController(
 
   async function setScene(nextScene) {
     const sceneKey = sanitizeSceneKey(nextScene.sceneKey || currentScene.sceneKey);
+    const sceneChanged = currentScene.sceneKey !== sceneKey;
     const definition = await loadSceneDefinition(sceneKey, assetBase, logger);
     const definitionDefaults = definition?.manifest?.defaults || {};
-    const baseScene =
-      currentScene.sceneKey === sceneKey
-        ? currentScene
-        : {
-            ...IDLE_SCENE,
-            ...definitionDefaults,
-            sceneKey,
-          };
+    const baseScene = !sceneChanged
+      ? currentScene
+      : {
+          ...IDLE_SCENE,
+          ...definitionDefaults,
+          sceneKey,
+        };
 
     const nextCurrentScene = {
       ...baseScene,
