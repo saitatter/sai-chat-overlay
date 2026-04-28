@@ -167,6 +167,7 @@ function createRenderer(canvas, logger) {
   if (!gl) {
     logger.warn("WebGL unavailable for scene runtime.");
     return {
+      setFragmentShader() {},
       setParameters() {},
       start() {},
     };
@@ -233,7 +234,7 @@ function createRenderer(canvas, logger) {
     gl.uniform1f(locations.time, (performance.now() - startedAt) / 1000);
     gl.uniform3fv(locations.accentColor, accent);
     gl.uniform3fv(locations.secondaryColor, secondary);
-    gl.uniform1f(locations.intensity, Number(parameters.intensity) || 0.8);
+    gl.uniform1f(locations.intensity, Number(parameters.intensity ?? 0.8));
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     requestAnimationFrame(render);
@@ -310,7 +311,9 @@ function createSceneController(dom, renderer, instance, assetBase, logger) {
     };
 
     if (definition?.fragmentShader) renderer.setFragmentShader(definition.fragmentShader);
-    dom.content.classList.toggle("scene-idle", currentScene.sceneKey === "idle");
+    const isIdle = currentScene.sceneKey === "idle";
+    dom.content.classList.toggle("scene-idle", isIdle);
+    dom.canvas.classList.toggle("scene-idle", isIdle);
     dom.kicker.textContent = currentScene.kicker || currentScene.sceneKey || "";
     dom.title.textContent = currentScene.title || "";
     dom.subtitle.textContent = currentScene.subtitle || "";
@@ -382,7 +385,7 @@ function connectSceneSocket({ wsUrl, logger, onPacket, statusEl }) {
 
     socket.addEventListener("close", () => {
       reconnectAttempt += 1;
-      const delay = Math.min(12000, 750 * reconnectAttempt);
+      const delay = Math.min(12000, 750 * 2 ** Math.max(0, reconnectAttempt - 1));
       statusEl.textContent = `Scene: reconnecting (${reconnectAttempt})`;
       setTimeout(connect, delay);
     });
