@@ -207,8 +207,15 @@ function createRenderer(canvas, logger) {
     }
   }
 
+  if ("ResizeObserver" in window) {
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
+  } else {
+    window.addEventListener("resize", resize);
+  }
+  resize();
+
   function render() {
-    resize();
     const accent = hexToVec3(parameters.accentColor, [0.57, 0.27, 1]);
     const secondary = hexToVec3(parameters.secondaryColor, [0, 0.82, 1]);
 
