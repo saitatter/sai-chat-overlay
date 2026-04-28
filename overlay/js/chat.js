@@ -1,8 +1,30 @@
 import { CHAT_DEFAULTS, GAP_PX } from "./constants.js";
 import { animateRemoveMessage } from "./animations.js";
 import { getCssNumberVar } from "./utils.js";
+import { createEmoteCache } from "./emote-cache.js";
 
-function buildMessageNode(user, message, platform, badges) {
+function appendMessageContent(div, message, segments) {
+  const textSegments = Array.isArray(segments)
+    ? segments
+    : [{ type: "text", text: String(message) }];
+
+  textSegments.forEach((segment) => {
+    if (segment?.type === "emote" && typeof segment.url === "string" && segment.url) {
+      const emote = document.createElement("img");
+      emote.src = segment.url;
+      emote.alt = segment.alt || "emote";
+      emote.className = "emote";
+      emote.loading = "eager";
+      div.appendChild(emote);
+      return;
+    }
+
+    const text = typeof segment?.text === "string" ? segment.text : "";
+    if (text) div.appendChild(document.createTextNode(text));
+  });
+}
+
+function buildMessageNode(user, message, platform, badges, segments) {
   const div = document.createElement("div");
   div.className = `msg ${platform.toLowerCase()}`;
 
@@ -20,7 +42,8 @@ function buildMessageNode(user, message, platform, badges) {
   userSpan.className = "user";
   userSpan.textContent = `${user}:`;
   div.appendChild(userSpan);
-  div.appendChild(document.createTextNode(` ${message}`));
+  div.appendChild(document.createTextNode(" "));
+  appendMessageContent(div, message, segments);
   return div;
 }
 
@@ -31,6 +54,9 @@ function getEnterDurationMs() {
 export function createChatController(chat, getFadeTimeMs, options = {}) {
   const maxMessages = options.maxMessages || CHAT_DEFAULTS.maxMessages;
   const burstPerFrame = options.burstPerFrame || CHAT_DEFAULTS.burstPerFrame;
+  const emoteCache = createEmoteCache(
+    options.maxCachedEmotes || CHAT_DEFAULTS.maxCachedEmotes || 256,
+  );
 
   let isCompacting = false;
   let flushScheduled = false;
@@ -53,8 +79,8 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
     });
   }
 
-  function renderMessage(user, message, platform, badges) {
-    const div = buildMessageNode(user, message, platform, badges);
+  function renderMessage(user, message, platform, badges, segments) {
+    const div = buildMessageNode(user, message, platform, badges, segments);
     div.style.transition = `transform ${getEnterDurationMs()}ms ease`;
     div.style.transform = "translate3d(100%, 0, 0)";
     div.style.opacity = "1";
@@ -79,7 +105,7 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
 
     while (pendingMessages.length > 0 && processed < burstPerFrame) {
       const entry = pendingMessages.shift();
-      renderMessage(entry.user, entry.message, entry.platform, entry.badges);
+      renderMessage(entry.user, entry.message, entry.platform, entry.badges, entry.segments);
       processed += 1;
     }
 
@@ -92,8 +118,16 @@ export function createChatController(chat, getFadeTimeMs, options = {}) {
     requestAnimationFrame(flushPending);
   }
 
-  function addMessage(user, message, platform, badges) {
-    pendingMessages.push({ user, message, platform, badges });
+  function addMessage(user, message, platform, badges, segments) {
+    if (Array.isArray(segments)) {
+      segments.forEach((segment) => {
+        if (segment?.type === "emote" && typeof segment.url === "string") {
+          emoteCache.prefetch(segment.url);
+        }
+      });
+    }
+
+    pendingMessages.push({ user, message, platform, badges, segments });
     scheduleFlush();
   }
 

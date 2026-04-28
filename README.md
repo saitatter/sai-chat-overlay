@@ -165,6 +165,7 @@ On every push to `main`, CI checks if a new version should be published. Feature
 If no `feat`/`fix`/`perf`/`refactor` (or breaking change) is detected, no release is created.
 
 - Use Conventional Commits: `feat: ...`, `fix: ...`, `perf: ...`, `refactor: ...`
+- Squash merges are supported: conventional commit lines kept in the squash commit body are expanded into individual changelog entries, matching the `pylrcget` release style.
 - Breaking changes:
   ```
   BREAKING CHANGE: description...
@@ -188,7 +189,7 @@ If no `feat`/`fix`/`perf`/`refactor` (or breaking change) is detected, no releas
 PRs are welcome! Please:
 
 - Keep commits small and conventional.
-- Avoid squash merges if you want granular changelog entries.
+- When squash merging, keep the branch commit list in the squash body so every conventional commit appears in the release changelog.
 
 ---
 
