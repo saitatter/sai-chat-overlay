@@ -71,6 +71,14 @@ function safeUrl(value, fallback, allowedProtocols) {
   }
 }
 
+function safeRelativePath(value, fallback) {
+  if (!value) return fallback;
+  const normalized = value.trim().replace(/\\/g, "/");
+  if (!normalized || normalized.startsWith("/") || normalized.includes("://")) return fallback;
+  if (normalized.split("/").some((part) => part === ".." || part === "")) return fallback;
+  return /^[a-z0-9_./-]+$/i.test(normalized) ? normalized : fallback;
+}
+
 function normalizeInstance(value) {
   const normalized = (value || "main").trim().toLowerCase();
   return /^[a-z0-9_-]{1,40}$/.test(normalized) ? normalized : "main";
@@ -196,6 +204,11 @@ function createRenderer(canvas, logger) {
     secondaryColor: "#00D1FF",
     intensity: 0.8,
   };
+  let parameterUniforms = {
+    accent: hexToVec3(parameters.accentColor, [0.57, 0.27, 1]),
+    secondary: hexToVec3(parameters.secondaryColor, [0, 0.82, 1]),
+    intensity: Number(parameters.intensity ?? 0.8),
+  };
 
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(
@@ -235,9 +248,6 @@ function createRenderer(canvas, logger) {
   resize();
 
   function render() {
-    const accent = hexToVec3(parameters.accentColor, [0.57, 0.27, 1]);
-    const secondary = hexToVec3(parameters.secondaryColor, [0, 0.82, 1]);
-
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(program);
@@ -246,9 +256,9 @@ function createRenderer(canvas, logger) {
     gl.vertexAttribPointer(locations.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform2f(locations.resolution, canvas.width, canvas.height);
     gl.uniform1f(locations.time, (performance.now() - startedAt) / 1000);
-    gl.uniform3fv(locations.accentColor, accent);
-    gl.uniform3fv(locations.secondaryColor, secondary);
-    gl.uniform1f(locations.intensity, Number(parameters.intensity ?? 0.8));
+    gl.uniform3fv(locations.accentColor, parameterUniforms.accent);
+    gl.uniform3fv(locations.secondaryColor, parameterUniforms.secondary);
+    gl.uniform1f(locations.intensity, parameterUniforms.intensity);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     if (isActive) {
@@ -272,6 +282,11 @@ function createRenderer(canvas, logger) {
     },
     setParameters(nextParameters = {}) {
       parameters = { ...parameters, ...nextParameters };
+      parameterUniforms = {
+        accent: hexToVec3(parameters.accentColor, [0.57, 0.27, 1]),
+        secondary: hexToVec3(parameters.secondaryColor, [0, 0.82, 1]),
+        intensity: Number(parameters.intensity ?? 0.8),
+      };
     },
     setActive(nextActive) {
       if (nextActive === isActive) return;
@@ -440,7 +455,7 @@ const debug = readFlag(params, "debug");
 const instance = normalizeInstance(params.get("instance"));
 const overlayWsUrl = safeUrl(params.get("overlayWsUrl"), DEFAULT_OVERLAY_WS_URL, ["ws:", "wss:"]);
 const sceneApiUrl = safeUrl(params.get("sceneApiUrl"), DEFAULT_SCENE_API_URL, ["http:", "https:"]);
-const sceneAssetBase = params.get("sceneAssetBase") || DEFAULT_SCENE_ASSET_BASE;
+const sceneAssetBase = safeRelativePath(params.get("sceneAssetBase"), DEFAULT_SCENE_ASSET_BASE);
 const logger = createLogger("scene-runtime", debug);
 
 if (debug) document.body.classList.add("scene-debug");
