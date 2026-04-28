@@ -77,8 +77,17 @@ function normalizeInstance(value) {
 }
 
 function hexToVec3(hex, fallback) {
-  if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return fallback;
-  const value = Number.parseInt(hex.slice(1), 16);
+  if (typeof hex !== "string") return fallback;
+  const match = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return fallback;
+  const normalized =
+    match[1].length === 3
+      ? match[1]
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : match[1];
+  const value = Number.parseInt(normalized, 16);
   return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
 }
 
@@ -226,6 +235,8 @@ function createRenderer(canvas, logger) {
     const accent = hexToVec3(parameters.accentColor, [0.57, 0.27, 1]);
     const secondary = hexToVec3(parameters.secondaryColor, [0, 0.82, 1]);
 
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.enableVertexAttribArray(locations.position);
